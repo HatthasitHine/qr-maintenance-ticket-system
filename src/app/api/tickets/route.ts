@@ -39,7 +39,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { machineId, reporterName, reporterPhone, issueDesc, urgency } = body;
+    const {
+      machineId,
+      reporterName,
+      reporterPhone,
+      issueDesc,
+      urgency,
+      photoBeforeUrl,
+    } = body;
 
     if (!machineId || !reporterName || !issueDesc) {
       return NextResponse.json(
@@ -79,6 +86,7 @@ export async function POST(req: NextRequest) {
         issueDesc,
         urgency: urgency || "NORMAL",
         status: "CREATED",
+        photoBeforeUrl: photoBeforeUrl || null,
       },
       include: {
         machine: true,

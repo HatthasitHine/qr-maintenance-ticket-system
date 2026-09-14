@@ -117,12 +117,10 @@ function CameraScannerComponent() {
     // Stop scanning safely once detected
     if (scannerRef.current) {
       try {
-        // Html5Qrcode.getState() === 2 means SCANNING
-        if (typeof (scannerRef.current as any).getState === "function") {
-          if ((scannerRef.current as any).getState() === 2) {
-            scannerRef.current.stop().catch(() => {});
-          }
-        } else {
+        if (
+          typeof (scannerRef.current as any).getState === "function" &&
+          (scannerRef.current as any).getState() === 2
+        ) {
           scannerRef.current.stop().catch(() => {});
         }
       } catch (err) {
@@ -142,26 +140,20 @@ function CameraScannerComponent() {
       if (parts[1]) machineParam = decodeURIComponent(parts[1].split(/[?#]/)[0]);
     }
 
-    // Process destination based on mode
+    let targetUrl = `/ticket/new?machine_id=${encodeURIComponent(machineParam)}`;
+    if (mode === "start") {
+      targetUrl = `/technician?action=start&ticket_id=${encodeURIComponent(
+        ticketId
+      )}&machine_code=${encodeURIComponent(machineParam)}`;
+    } else if (mode === "finish") {
+      targetUrl = `/technician?action=finish&ticket_id=${encodeURIComponent(
+        ticketId
+      )}&machine_code=${encodeURIComponent(machineParam)}`;
+    }
+
     setTimeout(() => {
-      if (mode === "report") {
-        router.push(`/ticket/new?machine_id=${encodeURIComponent(machineParam)}`);
-      } else if (mode === "start") {
-        router.push(
-          `/technician?action=start&ticket_id=${encodeURIComponent(
-            ticketId
-          )}&machine_code=${encodeURIComponent(machineParam)}`
-        );
-      } else if (mode === "finish") {
-        router.push(
-          `/technician?action=finish&ticket_id=${encodeURIComponent(
-            ticketId
-          )}&machine_code=${encodeURIComponent(machineParam)}`
-        );
-      } else {
-        router.push(`/ticket/new?machine_id=${encodeURIComponent(machineParam)}`);
-      }
-    }, 400);
+      window.location.href = targetUrl;
+    }, 300);
   }
 
   // Handle Photo File Upload
