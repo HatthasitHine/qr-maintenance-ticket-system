@@ -49,6 +49,12 @@ model Ticket {
   technician             User?         @relation("TechnicianTickets", fields: [technicianId], references: [id])
   
   assignmentTimeout      DateTime?
+  
+  // Explicit Timestamps for full lifecycle tracking
+  acceptedAt             DateTime?     // เวลาที่ช่างกดรับงาน
+  startedAt              DateTime?     // เวลาที่เริ่มซ่อมหน้างาน
+  resolvedAt             DateTime?     // เวลาที่ปิดงาน/ส่งงาน
+  
   photoBeforeUrl         String?       // รูปถ่ายตอนแจ้ง
   photoAfterUrl          String?       // รูปถ่ายหลังซ่อมเสร็จ
   sparePartsUsed         String?       // อะไหล่ที่เปลี่ยน
@@ -57,7 +63,6 @@ model Ticket {
   finishQrVerified       Boolean       @default(false)
   
   resolutionNotes        String?
-  resolvedAt             DateTime?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   

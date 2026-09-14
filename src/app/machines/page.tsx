@@ -11,6 +11,9 @@ import {
   MapPin,
   CheckCircle2,
   ExternalLink,
+  PlusCircle,
+  X,
+  Sparkles,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { Machine } from "@/lib/types";
@@ -26,6 +29,7 @@ export default function MachinesPage() {
   const [newName, setNewName] = useState<string>("");
   const [newLocation, setNewLocation] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function loadMachines() {
     try {
@@ -69,6 +73,45 @@ export default function MachinesPage() {
     loadMachines();
   }, []);
 
+  async function handleCreateMachine(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCode.trim() || !newName.trim() || !newLocation.trim()) {
+      setErrorMsg("กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch("/api/machines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: newCode.trim(),
+          name: newName.trim(),
+          location: newLocation.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShowAddModal(false);
+        setNewCode("");
+        setNewName("");
+        setNewLocation("");
+        await loadMachines();
+      } else {
+        setErrorMsg(data.error || "เกิดข้อผิดพลาดในการสร้างเครื่องจักร");
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Controls */}
@@ -76,20 +119,28 @@ export default function MachinesPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Cpu className="w-6 h-6 text-blue-600" />
-            ทะเบียนเครื่องจักร & สั่งพิมพ์ป้าย QR Code
+            ทะเบียนเครื่องจักร & ป้ายสแกน QR Code
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            พิมพ์ป้ายสติ๊กเกอร์ QR Code ไปติดหน้าเครื่องจักร สำหรับให้พนักงานสแกนแจ้งซ่อม
+            สร้างเครื่องจักรใหม่ และสั่งพิมพ์ป้ายสติ๊กเกอร์ QR Code ไปติดหน้าเครื่องจักร
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>➕ เพิ่มเครื่องจักรใหม่ & สร้าง QR</span>
+          </button>
+
+          <button
             onClick={() => window.print()}
             className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all"
           >
             <Printer className="w-4 h-4" />
-            <span>สั่งพิมพ์สติ๊กเกอร์ทั้งหมด (Print Badges)</span>
+            <span>สั่งพิมพ์ป้ายทั้งหมด (Print Badges)</span>
           </button>
         </div>
       </div>
@@ -99,7 +150,7 @@ export default function MachinesPage() {
         {machines.map((machine) => (
           <div
             key={machine.id}
-            className="bg-white rounded-2xl border-2 border-slate-300 p-5 text-center shadow-sm print:shadow-none print:border-black space-y-3 flex flex-col justify-between"
+            className="bg-white rounded-2xl border-2 border-slate-300 p-5 text-center shadow-sm print:shadow-none print:border-black space-y-3 flex flex-col justify-between hover:border-blue-400 transition-colors"
           >
             <div className="space-y-1">
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-700">
@@ -146,6 +197,95 @@ export default function MachinesPage() {
           </div>
         ))}
       </div>
+
+      {/* ======================================================== */}
+      {/* MODAL: ADD NEW MACHINE & AUTO-GENERATE QR */}
+      {/* ======================================================== */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-blue-600" />
+                เพิ่มเครื่องจักรใหม่ & สร้าง QR Code
+              </h3>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateMachine} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  รหัสเครื่องจักร (Machine Code) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCode}
+                  onChange={(e) => setNewCode(e.target.value)}
+                  placeholder="เช่น CNC-03, PUMP-02, AC-401"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold uppercase"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  ชื่อเครื่องจักร / รายละเอียด <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="เช่น เครื่องตัดเลเซอร์ไฟเบอร์ 3000W"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  สถานที่ติดตั้ง / โซน <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="เช่น โรงงาน 2 - โซนตัดชิ้นงาน"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 disabled:opacity-50"
+                >
+                  {submitting ? "กำลังบันทึก..." : "บันทึกและสร้าง QR ทันที"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

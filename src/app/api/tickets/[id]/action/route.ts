@@ -35,10 +35,11 @@ export async function POST(
         : ticket.technician;
 
       const actorName = actor ? actor.name : "ช่างผู้ปฏิบัติงาน";
+      const now = new Date();
 
       switch (action) {
         // ----------------------------------------------------
-        // ACTION: ACCEPT TICKET (Optimistic Concurrency Guard)
+        // ACTION: ACCEPT TICKET (Records acceptedAt)
         // ----------------------------------------------------
         case "ACCEPT": {
           if (ticket.status !== "CREATED" && ticket.status !== "REOPENED") {
@@ -52,6 +53,7 @@ export async function POST(
             where: { id: ticket.id },
             data: {
               status: "ACCEPTED",
+              acceptedAt: now,
               assignmentTimeout: null,
               technicianId: actor?.id || ticket.technicianId,
             },
@@ -63,7 +65,7 @@ export async function POST(
               ticketId: ticket.id,
               actorName,
               eventType: "ACCEPTED",
-              description: `ช่าง ${actorName} กดรับงานเข้าคิวเรียบร้อยแล้ว`,
+              description: `ช่าง ${actorName} กดรับงานเข้าคิวเมื่อ ${now.toLocaleTimeString("th-TH")}`,
               userId: actor?.id,
             },
           });
@@ -72,14 +74,13 @@ export async function POST(
         }
 
         // ----------------------------------------------------
-        // ACTION: START REPAIR (Scan QR / Confirm On-site)
+        // ACTION: START REPAIR (Records startedAt)
         // ----------------------------------------------------
         case "START": {
           if (ticket.status !== "ACCEPTED") {
             throw new Error(`INVALID_STATE: ต้องอยู่ในสถานะ ACCEPTED ก่อน (ปัจจุบันคือ ${ticket.status})`);
           }
 
-          // If machineCode verification is supplied, check match
           let verified = false;
           if (machineCode) {
             if (machineCode.trim().toUpperCase() !== ticket.machine.code.toUpperCase()) {
@@ -92,6 +93,7 @@ export async function POST(
             where: { id: ticket.id },
             data: {
               status: "IN_PROGRESS",
+              startedAt: now,
               startQrVerified: verified || ticket.startQrVerified,
             },
             include: { machine: true, technician: true },
@@ -103,8 +105,8 @@ export async function POST(
               actorName,
               eventType: "STARTED",
               description: verified
-                ? `ช่าง ${actorName} สแกน QR ยืนยันถึงหน้าเครื่องจักร (${ticket.machine.code}) และเริ่มดำเนินการซ่อม`
-                : `ช่าง ${actorName} ยืนยันเริ่มดำเนินการซ่อม`,
+                ? `ช่าง ${actorName} สแกน QR ยืนยันถึงหน้าเครื่องจักร (${ticket.machine.code}) และเริ่มซ่อมเมื่อ ${now.toLocaleTimeString("th-TH")}`
+                : `ช่าง ${actorName} เริ่มดำเนินการซ่อมเมื่อ ${now.toLocaleTimeString("th-TH")}`,
               userId: actor?.id,
             },
           });
@@ -113,14 +115,13 @@ export async function POST(
         }
 
         // ----------------------------------------------------
-        // ACTION: RESOLVE (Finish with Success)
+        // ACTION: RESOLVE (Records resolvedAt & duration)
         // ----------------------------------------------------
         case "RESOLVE": {
           if (ticket.status !== "IN_PROGRESS") {
             throw new Error(`INVALID_STATE: ต้องอยู่ในสถานะ IN_PROGRESS ก่อนปิดงาน`);
           }
 
-          // If machineCode verification is supplied, check match
           let verified = false;
           if (machineCode) {
             if (machineCode.trim().toUpperCase() !== ticket.machine.code.toUpperCase()) {
@@ -131,15 +132,22 @@ export async function POST(
 
           const notes = resolutionNotes || "ซ่อมบำรุงเสร็จสิ้นตามมาตรฐาน";
 
+          // Calculate duration in minutes if startedAt exists
+          let calculatedDuration = repairDurationMinutes;
+          if (!calculatedDuration && ticket.startedAt) {
+            const diffMs = now.getTime() - new Date(ticket.startedAt).getTime();
+            calculatedDuration = Math.max(1, Math.round(diffMs / (1000 * 60)));
+          }
+
           const updated = await tx.ticket.update({
             where: { id: ticket.id },
             data: {
               status: "RESOLVED",
-              resolvedAt: new Date(),
+              resolvedAt: now,
               resolutionNotes: notes,
               photoAfterUrl: photoAfterUrl || ticket.photoAfterUrl,
               sparePartsUsed: sparePartsUsed || ticket.sparePartsUsed,
-              repairDurationMinutes: repairDurationMinutes || null,
+              repairDurationMinutes: calculatedDuration || null,
               finishQrVerified: verified || ticket.finishQrVerified,
             },
             include: { machine: true, technician: true },
@@ -150,7 +158,9 @@ export async function POST(
               ticketId: ticket.id,
               actorName,
               eventType: "RESOLVED",
-              description: `ปิดงานซ่อม [สำเร็จ]: ${notes}${sparePartsUsed ? ` (อะไหล่: ${sparePartsUsed})` : ""}`,
+              description: `ปิดงานซ่อม [สำเร็จ] เมื่อ ${now.toLocaleTimeString("th-TH")}: ${notes}${
+                calculatedDuration ? ` (ใช้เวลาซ่อม ${calculatedDuration} นาที)` : ""
+              }${sparePartsUsed ? ` (อะไหล่: ${sparePartsUsed})` : ""}`,
               userId: actor?.id,
             },
           });
@@ -159,7 +169,7 @@ export async function POST(
         }
 
         // ----------------------------------------------------
-        // ACTION: REOPEN (Finish with Failure / Re-queue)
+        // ACTION: REOPEN (Records re-entry timestamp)
         // ----------------------------------------------------
         case "REOPEN": {
           if (ticket.status !== "IN_PROGRESS") {
@@ -184,7 +194,7 @@ export async function POST(
               ticketId: ticket.id,
               actorName,
               eventType: "REOPENED",
-              description: `ปิดงาน [ไม่สำเร็จ]: ${notes} ➔ วนงานกลับเข้าคิวช่างเดิม`,
+              description: `ปิดงาน [ไม่สำเร็จ] เมื่อ ${now.toLocaleTimeString("th-TH")}: ${notes} ➔ วนงานกลับเข้าคิวช่างเดิม`,
               userId: actor?.id,
             },
           });

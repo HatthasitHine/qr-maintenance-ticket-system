@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Check,
   Package,
+  Timer,
 } from "lucide-react";
 import { Ticket } from "@/lib/types";
 
@@ -146,10 +147,10 @@ export default function TicketTrackingPage({
           <div>{getStatusBadge(ticket.status)}</div>
         </div>
 
-        {/* 4-Step Progress Bar */}
+        {/* 4-Step Progress Bar with Real Timestamps */}
         <div className="grid grid-cols-4 gap-2 text-center relative py-2">
           {/* Step 1 */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div
               className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center font-bold text-sm ${
                 isCreated ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"
@@ -158,11 +159,13 @@ export default function TicketTrackingPage({
               1
             </div>
             <div className="text-xs font-bold text-slate-800">แจ้งปัญหา</div>
-            <div className="text-[10px] text-slate-400">CREATED</div>
+            <div className="text-[10px] text-slate-500">
+              {new Date(ticket.createdAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+            </div>
           </div>
 
           {/* Step 2 */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div
               className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center font-bold text-sm ${
                 isAccepted ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"
@@ -171,11 +174,15 @@ export default function TicketTrackingPage({
               2
             </div>
             <div className="text-xs font-bold text-slate-800">ช่างรับงาน</div>
-            <div className="text-[10px] text-slate-400">ACCEPTED</div>
+            <div className="text-[10px] text-slate-500">
+              {ticket.acceptedAt
+                ? new Date(ticket.acceptedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
+                : "รอกดรับ"}
+            </div>
           </div>
 
           {/* Step 3 */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div
               className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center font-bold text-sm ${
                 isInProgress ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-400"
@@ -184,11 +191,15 @@ export default function TicketTrackingPage({
               3
             </div>
             <div className="text-xs font-bold text-slate-800">เริ่มซ่อม</div>
-            <div className="text-[10px] text-slate-400">IN PROGRESS</div>
+            <div className="text-[10px] text-slate-500">
+              {ticket.startedAt
+                ? new Date(ticket.startedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
+                : "-"}
+            </div>
           </div>
 
           {/* Step 4 */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div
               className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center font-bold text-sm ${
                 isResolved
@@ -203,8 +214,10 @@ export default function TicketTrackingPage({
             <div className="text-xs font-bold text-slate-800">
               {ticket.status === "REOPENED" ? "ส่งกลับแก้ไข" : "ปิดงาน"}
             </div>
-            <div className="text-[10px] text-slate-400">
-              {ticket.status === "REOPENED" ? "REOPENED" : "RESOLVED"}
+            <div className="text-[10px] text-slate-500">
+              {ticket.resolvedAt
+                ? new Date(ticket.resolvedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
+                : "-"}
             </div>
           </div>
         </div>
@@ -262,6 +275,13 @@ export default function TicketTrackingPage({
                       <span className="text-slate-400">รอยืนยัน</span>
                     )}
                   </div>
+
+                  {ticket.repairDurationMinutes && (
+                    <div className="text-xs flex items-center gap-1 text-slate-700 font-medium">
+                      <Timer className="w-3.5 h-3.5 text-purple-600" />
+                      <span>เวลาซ่อมทั้งหมด: <strong>{ticket.repairDurationMinutes} นาที</strong></span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

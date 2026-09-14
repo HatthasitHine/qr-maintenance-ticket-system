@@ -51,6 +51,12 @@ export interface Ticket {
   technicianId?: string | null;
   technician?: User | null;
   assignmentTimeout?: string | null;
+  
+  // Timestamps
+  acceptedAt?: string | null;
+  startedAt?: string | null;
+  resolvedAt?: string | null;
+  
   photoBeforeUrl?: string | null;
   photoAfterUrl?: string | null;
   sparePartsUsed?: string | null;
@@ -58,7 +64,6 @@ export interface Ticket {
   startQrVerified: boolean;
   finishQrVerified: boolean;
   resolutionNotes?: string | null;
-  resolvedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   events?: TicketEvent[];
