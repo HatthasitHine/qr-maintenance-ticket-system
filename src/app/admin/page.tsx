@@ -17,6 +17,7 @@ import {
   Users,
   AlertCircle,
   ExternalLink,
+  Radio,
 } from "lucide-react";
 import { Ticket, User as UserType } from "@/lib/types";
 
@@ -189,18 +190,42 @@ export default function AdminDashboardPage() {
               className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between"
             >
               <div>
-                <div className="font-bold text-xs text-slate-900">{t.name}</div>
+                <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                  <span>{t.name}</span>
+                </div>
                 <div className="text-[11px] text-slate-500">{t.phone || "-"}</div>
+                
+                {/* Duty Status Badge */}
+                <div className="mt-1">
+                  {t.dutyStatus === "ON_DUTY" && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                      🟢 เข้าเวร (On Duty)
+                    </span>
+                  )}
+                  {t.dutyStatus === "ON_BREAK" && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">
+                      🟡 พักเบรก (On Break)
+                    </span>
+                  )}
+                  {t.dutyStatus === "OFF_DUTY" && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                      ⚪ ออกเวร (Off Duty)
+                    </span>
+                  )}
+                </div>
               </div>
-              <span
-                className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  (t.activeTicketCount ?? 0) === 0
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-amber-100 text-amber-800"
-                }`}
-              >
-                Active: {t.activeTicketCount ?? 0} งาน
-              </span>
+
+              <div className="text-right">
+                <span
+                  className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                    (t.activeTicketCount ?? 0) === 0
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-purple-100 text-purple-800"
+                  }`}
+                >
+                  คิวงาน: {t.activeTicketCount ?? 0} งาน
+                </span>
+              </div>
             </div>
           ))}
         </div>

@@ -22,6 +22,8 @@ export async function GET() {
       email: t.email,
       phone: t.phone,
       role: t.role,
+      dutyStatus: (t.dutyStatus || "ON_DUTY") as "ON_DUTY" | "ON_BREAK" | "OFF_DUTY",
+      lineUserId: t.lineUserId,
       activeTicketCount: t.assignedTickets.length,
     }));
 

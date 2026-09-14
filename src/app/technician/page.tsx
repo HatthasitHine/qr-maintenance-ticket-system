@@ -22,6 +22,7 @@ import {
   X,
   Volume2,
   VolumeX,
+  Radio,
 } from "lucide-react";
 import { Ticket, User as UserType, DutyStatus } from "@/lib/types";
 
@@ -137,9 +138,16 @@ export default function TechnicianPortalPage() {
 
   const selectedTech = technicians.find((t) => t.id === selectedTechId);
 
-  // Toggle Duty Status
+  // Toggle Duty Status with Optimistic UI update
   async function updateDutyStatus(newStatus: DutyStatus) {
     if (!selectedTechId) return;
+
+    // 1. Optimistic update in UI state immediately
+    setTechnicians((prev) =>
+      prev.map((t) => (t.id === selectedTechId ? { ...t, dutyStatus: newStatus } : t))
+    );
+
+    // 2. Persist to API
     try {
       const res = await fetch(`/api/technicians/${selectedTechId}/duty`, {
         method: "POST",
@@ -147,11 +155,13 @@ export default function TechnicianPortalPage() {
         body: JSON.stringify({ dutyStatus: newStatus }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (!data.success) {
+        alert(data.error || "ไม่สามารถเปลี่ยนสถานะได้");
         await loadTechs();
       }
     } catch (err) {
       console.error("Error updating duty status:", err);
+      await loadTechs();
     }
   }
 
@@ -232,6 +242,8 @@ export default function TechnicianPortalPage() {
     });
   }
 
+  const currentDuty = selectedTech?.dutyStatus || "ON_DUTY";
+
   return (
     <div className="space-y-6">
       {/* Top Header & Tech Selector */}
@@ -242,15 +254,32 @@ export default function TechnicianPortalPage() {
               <HardHat className="w-7 h-7" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight">
                   {selectedTech?.name || "หน้าจอช่างผู้ปฏิบัติงาน"}
                 </h1>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30">
-                  TECHNICIAN
-                </span>
+                
+                {/* Active Duty Status Badge */}
+                {currentDuty === "ON_DUTY" && (
+                  <span className="text-xs px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    พร้อมรับงาน (On Duty)
+                  </span>
+                )}
+                {currentDuty === "ON_BREAK" && (
+                  <span className="text-xs px-3 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    พักเบรก (On Break)
+                  </span>
+                )}
+                {currentDuty === "OFF_DUTY" && (
+                  <span className="text-xs px-3 py-0.5 rounded-full bg-slate-500/20 text-slate-400 border border-slate-500/40 font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    ออกเวร (Off Duty)
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-400 mt-1">
                 โทร: {selectedTech?.phone || "-"} | คิวงานในมือ:{" "}
                 <strong className="text-white font-bold">
                   {acceptedTickets.length + inProgressTickets.length} งาน
@@ -272,7 +301,7 @@ export default function TechnicianPortalPage() {
               >
                 {technicians.map((t) => (
                   <option key={t.id} value={t.id}>
-                    👤 {t.name}
+                    👤 {t.name} ({t.dutyStatus === "ON_DUTY" ? "🟢 On" : t.dutyStatus === "ON_BREAK" ? "🟡 Break" : "⚪ Off"})
                   </option>
                 ))}
               </select>
@@ -289,25 +318,27 @@ export default function TechnicianPortalPage() {
           </div>
         </div>
 
-        {/* Duty Status Controller Bar */}
+        {/* Duty Status Controller Bar (Interactive Click) */}
         <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-            <span>สถานะเวรปฏิบัติการ:</span>
+            <Radio className="w-4 h-4 text-blue-400" />
+            <span>ปรับสถานะเวรปฏิบัติการของคุณ:</span>
           </div>
 
           <div className="flex items-center gap-2">
             {[
-              { id: "ON_DUTY", label: "🟢 เข้าเวร / พร้อมรับงาน", color: "bg-emerald-600 text-white" },
-              { id: "ON_BREAK", label: "🟡 พักเบรก", color: "bg-amber-600 text-white" },
-              { id: "OFF_DUTY", label: "⚪ ออกเวร", color: "bg-slate-700 text-slate-300" },
+              { id: "ON_DUTY", label: "🟢 เข้าเวร / พร้อมรับงาน", activeClass: "bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md" },
+              { id: "ON_BREAK", label: "🟡 พักเบรก", activeClass: "bg-amber-600 text-white ring-2 ring-amber-300 shadow-md" },
+              { id: "OFF_DUTY", label: "⚪ ออกเวร", activeClass: "bg-slate-600 text-white ring-2 ring-slate-300 shadow-md" },
             ].map((st) => (
               <button
                 key={st.id}
+                type="button"
                 onClick={() => updateDutyStatus(st.id as DutyStatus)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  selectedTech?.dutyStatus === st.id
-                    ? `${st.color} shadow-sm ring-2 ring-white/30`
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentDuty === st.id
+                    ? st.activeClass
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
                 }`}
               >
                 {st.label}
