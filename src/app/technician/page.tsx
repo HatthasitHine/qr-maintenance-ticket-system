@@ -346,8 +346,13 @@ function TechnicianPortalContent() {
               <p className="text-xs text-slate-400 mt-1">
                 โทร: {selectedTech?.phone || "-"} | คิวงานในมือ:{" "}
                 <strong className="text-white font-bold">
-                  {acceptedTickets.length + inProgressTickets.length} งาน
+                  {incomingTickets.length + acceptedTickets.length + inProgressTickets.length} งาน
                 </strong>
+                {incomingTickets.length > 0 && (
+                  <span className="text-amber-300 ml-1.5 text-[11px]">
+                    (ใหม่ {incomingTickets.length})
+                  </span>
+                )}
               </p>
             </div>
           </div>

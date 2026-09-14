@@ -10,7 +10,7 @@ export const DEFAULT_TIMEOUT_SECONDS = parseInt(
 );
 
 /**
- * Finds the technician with the least number of active tickets (ACCEPTED / IN_PROGRESS)
+ * Finds the technician with the least number of active/pending tickets (CREATED / ACCEPTED / IN_PROGRESS / REOPENED)
  * who is currently ON_DUTY.
  */
 export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
@@ -23,9 +23,9 @@ export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
     include: {
       assignedTickets: {
         where: {
-          status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+          status: { in: ["CREATED", "ACCEPTED", "IN_PROGRESS", "REOPENED"] },
         },
-        select: { id: true },
+        select: { id: true, status: true },
       },
     },
   });
@@ -38,10 +38,12 @@ export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
     return null;
   }
 
-  // Sort by number of active tickets ascending
-  technicians.sort(
-    (a, b) => a.assignedTickets.length - b.assignedTickets.length
-  );
+  // Sort by number of active tickets ascending, then by name for stable tie-breaking
+  technicians.sort((a, b) => {
+    const diff = a.assignedTickets.length - b.assignedTickets.length;
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name);
+  });
 
   return {
     ...technicians[0],

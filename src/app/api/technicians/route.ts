@@ -8,7 +8,7 @@ export async function GET() {
       include: {
         assignedTickets: {
           where: {
-            status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+            status: { in: ["CREATED", "ACCEPTED", "IN_PROGRESS", "REOPENED"] },
           },
           select: { id: true, status: true },
         },
