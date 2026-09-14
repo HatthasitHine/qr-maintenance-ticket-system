@@ -102,11 +102,11 @@ export async function POST(
           }
 
           // ----------------------------------------------------
-          // ACTION: START REPAIR (Records startedAt)
+          // ACTION: START REPAIR (Records startedAt & auto-accepts if CREATED)
           // ----------------------------------------------------
           case "START": {
-            if (ticket.status !== "ACCEPTED") {
-              throw new Error(`INVALID_STATE: ต้องอยู่ในสถานะ ACCEPTED ก่อน (ปัจจุบันคือ ${ticket.status})`);
+            if (ticket.status !== "ACCEPTED" && ticket.status !== "CREATED" && ticket.status !== "REOPENED") {
+              throw new Error(`INVALID_STATE: ไม่สามารถเริ่มซ่อมได้ (สถานะปัจจุบันคือ ${ticket.status})`);
             }
 
             let verified = false;
@@ -121,7 +121,10 @@ export async function POST(
               where: { id: ticket.id },
               data: {
                 status: "IN_PROGRESS",
+                acceptedAt: ticket.acceptedAt || now,
                 startedAt: now,
+                assignmentTimeout: null,
+                technicianId: actor?.id || ticket.technicianId,
                 startQrVerified: verified || ticket.startQrVerified,
               },
               include: { machine: true, technician: true },

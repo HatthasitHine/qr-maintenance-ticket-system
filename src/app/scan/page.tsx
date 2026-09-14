@@ -140,15 +140,21 @@ function CameraScannerComponent() {
       if (parts[1]) machineParam = decodeURIComponent(parts[1].split(/[?#]/)[0]);
     }
 
+    const techId = searchParams.get("tech_id") || "";
+
     let targetUrl = `/ticket/new?machine_id=${encodeURIComponent(machineParam)}`;
     if (mode === "start") {
       targetUrl = `/technician?action=start&ticket_id=${encodeURIComponent(
         ticketId
-      )}&machine_code=${encodeURIComponent(machineParam)}`;
+      )}&machine_code=${encodeURIComponent(machineParam)}${
+        techId ? `&tech_id=${encodeURIComponent(techId)}` : ""
+      }`;
     } else if (mode === "finish") {
       targetUrl = `/technician?action=finish&ticket_id=${encodeURIComponent(
         ticketId
-      )}&machine_code=${encodeURIComponent(machineParam)}`;
+      )}&machine_code=${encodeURIComponent(machineParam)}${
+        techId ? `&tech_id=${encodeURIComponent(techId)}` : ""
+      }`;
     }
 
     setTimeout(() => {

@@ -62,9 +62,18 @@ function TechnicianPortalContent() {
   const urlAction = searchParams.get("action"); // start | finish
   const urlTicketId = searchParams.get("ticket_id");
   const urlMachineCode = searchParams.get("machine_code");
+  const urlTechId = searchParams.get("tech_id");
 
   const [technicians, setTechnicians] = useState<UserType[]>([]);
-  const [selectedTechId, setSelectedTechId] = useState<string>("");
+  const [selectedTechId, setSelectedTechId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const fromUrl = new URLSearchParams(window.location.search).get("tech_id");
+      if (fromUrl) return fromUrl;
+      const saved = localStorage.getItem("selected_technician_id");
+      if (saved) return saved;
+    }
+    return "";
+  });
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -106,9 +115,13 @@ function TechnicianPortalContent() {
           if (urlMachineCode) setCloseMachineCode(urlMachineCode);
         }
 
-        // Clean URL query params to prevent re-triggering on future renders/polling
+        // Clean URL query params but preserve tech_id
         if (typeof window !== "undefined") {
-          window.history.replaceState({}, document.title, window.location.pathname);
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.delete("action");
+          currentUrl.searchParams.delete("ticket_id");
+          currentUrl.searchParams.delete("machine_code");
+          window.history.replaceState({}, document.title, currentUrl.pathname + currentUrl.search);
         }
       }
     }
@@ -121,8 +134,16 @@ function TechnicianPortalContent() {
       const data = await res.json();
       if (data.success && data.technicians.length > 0) {
         setTechnicians(data.technicians);
-        if (!selectedTechId) {
-          setSelectedTechId(data.technicians[0].id);
+        
+        // Priority: 1. urlTechId, 2. localStorage, 3. current state, 4. first tech
+        const savedId = typeof window !== "undefined" ? localStorage.getItem("selected_technician_id") : "";
+        const preferredId = urlTechId || savedId || selectedTechId;
+        const exists = data.technicians.some((t: UserType) => t.id === preferredId);
+        
+        const finalId = exists ? preferredId : data.technicians[0].id;
+        setSelectedTechId(finalId);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("selected_technician_id", finalId);
         }
       }
     } catch (err) {
@@ -132,7 +153,17 @@ function TechnicianPortalContent() {
 
   useEffect(() => {
     loadTechs();
-  }, []);
+  }, [urlTechId]);
+
+  function handleSelectTechnician(id: string) {
+    setSelectedTechId(id);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("selected_technician_id", id);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tech_id", id);
+      window.history.replaceState({}, document.title, url.pathname + url.search);
+    }
+  }
 
   // Fetch Tickets for Selected Tech
   async function loadTechTickets(silent = false) {
@@ -329,7 +360,7 @@ function TechnicianPortalContent() {
               </label>
               <select
                 value={selectedTechId}
-                onChange={(e) => setSelectedTechId(e.target.value)}
+                onChange={(e) => handleSelectTechnician(e.target.value)}
                 className="bg-slate-800 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {technicians.map((t) => (
@@ -648,7 +679,7 @@ function TechnicianPortalContent() {
                   className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg"
                 />
                 <Link
-                  href={`/scan?mode=start&ticket_id=${startTicket.id}`}
+                  href={`/scan?mode=start&ticket_id=${startTicket.id}&tech_id=${selectedTechId}`}
                   className="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
                 >
                   <Camera className="w-3.5 h-3.5" /> กล้อง
