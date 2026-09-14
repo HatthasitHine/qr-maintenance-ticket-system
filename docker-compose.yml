@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fix_ticket_system
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/dev.db
+      - ASSIGNMENT_TIMEOUT_SECONDS=60
+    volumes:
+      - ticket_sqlite_data:/app/data
+
+volumes:
+  ticket_sqlite_data:
+    driver: local

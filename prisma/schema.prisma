@@ -1,0 +1,73 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Machine {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  location    String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  tickets     Ticket[]
+
+  @@map("machines")
+}
+
+model User {
+  id              String        @id @default(cuid())
+  name            String
+  email           String?       @unique
+  phone           String?
+  role            String        @default("TECHNICIAN") // OPERATOR, TECHNICIAN, ADMIN
+  createdAt       DateTime      @default(now())
+  assignedTickets Ticket[]      @relation("TechnicianTickets")
+  events          TicketEvent[]
+
+  @@map("users")
+}
+
+model Ticket {
+  id                 String        @id @default(cuid())
+  ticketNo           String        @unique
+  machineId          String
+  machine            Machine       @relation(fields: [machineId], references: [id])
+  reporterName       String
+  reporterPhone      String?
+  issueDesc          String
+  urgency            String        @default("NORMAL") // LOW, NORMAL, HIGH, CRITICAL
+  status             String        @default("CREATED") // CREATED, ACCEPTED, IN_PROGRESS, RESOLVED, REOPENED
+  
+  technicianId       String?
+  technician         User?         @relation("TechnicianTickets", fields: [technicianId], references: [id])
+  
+  assignmentTimeout  DateTime?
+  resolutionNotes    String?
+  resolvedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  
+  events             TicketEvent[]
+
+  @@map("tickets")
+}
+
+model TicketEvent {
+  id          String   @id @default(cuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorName   String
+  eventType   String   // CREATED, ASSIGNED, TIMEOUT_ESCALATED, ACCEPTED, STARTED, RESOLVED, REOPENED
+  description String
+  createdAt   DateTime @default(now())
+  
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@map("ticket_events")
+}
