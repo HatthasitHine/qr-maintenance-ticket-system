@@ -58,16 +58,30 @@ function CameraScannerComponent() {
     initScanner();
 
     return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(() => {});
+      if (scannerRef.current) {
+        try {
+          if (
+            typeof (scannerRef.current as any).getState === "function" &&
+            (scannerRef.current as any).getState() === 2
+          ) {
+            scannerRef.current.stop().catch(() => {});
+          }
+        } catch (e) {}
       }
     };
   }, []);
 
   async function startCamera(cameraId: string) {
     try {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        await scannerRef.current.stop();
+      if (scannerRef.current) {
+        try {
+          if (
+            typeof (scannerRef.current as any).getState === "function" &&
+            (scannerRef.current as any).getState() === 2
+          ) {
+            await scannerRef.current.stop();
+          }
+        } catch (e) {}
       }
 
       const qr = new Html5Qrcode("qr-reader");
@@ -95,38 +109,59 @@ function CameraScannerComponent() {
   }
 
   function handleScannedData(text: string) {
-    let cleanText = text.trim();
+    let cleanText = (text || "").trim();
+    if (!cleanText) return;
+
     setScanResult(cleanText);
 
-    // Stop scanning once detected
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      scannerRef.current.stop().catch(() => {});
+    // Stop scanning safely once detected
+    if (scannerRef.current) {
+      try {
+        // Html5Qrcode.getState() === 2 means SCANNING
+        if (typeof (scannerRef.current as any).getState === "function") {
+          if ((scannerRef.current as any).getState() === 2) {
+            scannerRef.current.stop().catch(() => {});
+          }
+        } else {
+          scannerRef.current.stop().catch(() => {});
+        }
+      } catch (err) {
+        console.warn("Error stopping scanner:", err);
+      }
+    }
+
+    // Extract machine_id or machine code safely from text or URL
+    let machineParam = cleanText;
+    if (cleanText.includes("machine_id=")) {
+      const match = cleanText.match(/machine_id=([^&#]+)/);
+      if (match && match[1]) {
+        machineParam = decodeURIComponent(match[1]);
+      }
+    } else if (cleanText.includes("/ticket/new/")) {
+      const parts = cleanText.split("/ticket/new/");
+      if (parts[1]) machineParam = decodeURIComponent(parts[1].split(/[?#]/)[0]);
     }
 
     // Process destination based on mode
     setTimeout(() => {
-      // If full URL was scanned, extract machine_id / code
-      if (cleanText.includes("machine_id=")) {
-        const url = new URL(cleanText, window.location.origin);
-        cleanText = url.searchParams.get("machine_id") || cleanText;
-      }
-
       if (mode === "report") {
-        router.push(`/ticket/new?machine_id=${encodeURIComponent(cleanText)}`);
+        router.push(`/ticket/new?machine_id=${encodeURIComponent(machineParam)}`);
       } else if (mode === "start") {
         router.push(
-          `/technician?action=start&ticket_id=${ticketId}&machine_code=${encodeURIComponent(
-            cleanText
-          )}`
+          `/technician?action=start&ticket_id=${encodeURIComponent(
+            ticketId
+          )}&machine_code=${encodeURIComponent(machineParam)}`
         );
       } else if (mode === "finish") {
         router.push(
-          `/technician?action=finish&ticket_id=${ticketId}&machine_code=${encodeURIComponent(
-            cleanText
-          )}`
+          `/technician?action=finish&ticket_id=${encodeURIComponent(
+            ticketId
+          )}&machine_code=${encodeURIComponent(machineParam)}`
         );
+      } else {
+        router.push(`/ticket/new?machine_id=${encodeURIComponent(machineParam)}`);
       }
-    }, 600);
+    }, 400);
   }
 
   // Handle Photo File Upload

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   HardHat,
   Bell,
@@ -56,7 +57,12 @@ function playChimeSound() {
   }
 }
 
-export default function TechnicianPortalPage() {
+function TechnicianPortalContent() {
+  const searchParams = useSearchParams();
+  const urlAction = searchParams.get("action"); // start | finish
+  const urlTicketId = searchParams.get("ticket_id");
+  const urlMachineCode = searchParams.get("machine_code");
+
   const [technicians, setTechnicians] = useState<UserType[]>([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -80,6 +86,22 @@ export default function TechnicianPortalPage() {
   const [afterPhotoFile, setAfterPhotoFile] = useState<File | null>(null);
   const [afterPhotoPreview, setAfterPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
+
+  // Check and trigger action from scan redirect
+  useEffect(() => {
+    if (urlAction && urlTicketId && tickets.length > 0) {
+      const target = tickets.find((t) => t.id === urlTicketId || t.ticketNo === urlTicketId);
+      if (target) {
+        if (urlAction === "start") {
+          setStartTicket(target);
+          if (urlMachineCode) setStartMachineCode(urlMachineCode);
+        } else if (urlAction === "finish") {
+          setClosingTicket(target);
+          if (urlMachineCode) setCloseMachineCode(urlMachineCode);
+        }
+      }
+    }
+  }, [urlAction, urlTicketId, urlMachineCode, tickets]);
 
   // Load Technicians
   async function loadTechs() {
@@ -824,5 +846,13 @@ export default function TechnicianPortalPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TechnicianPortalPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500">กำลังโหลดข้อมูลช่าง...</div>}>
+      <TechnicianPortalContent />
+    </Suspense>
   );
 }
