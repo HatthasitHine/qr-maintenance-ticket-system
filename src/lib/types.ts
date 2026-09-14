@@ -7,6 +7,8 @@ export type TicketStatus =
 
 export type UrgencyLevel = "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
 
+export type DutyStatus = "ON_DUTY" | "ON_BREAK" | "OFF_DUTY";
+
 export interface Machine {
   id: string;
   code: string;
@@ -22,6 +24,8 @@ export interface User {
   email?: string | null;
   phone?: string | null;
   role: string;
+  dutyStatus: DutyStatus;
+  lineUserId?: string | null;
   activeTicketCount?: number;
 }
 
@@ -47,6 +51,12 @@ export interface Ticket {
   technicianId?: string | null;
   technician?: User | null;
   assignmentTimeout?: string | null;
+  photoBeforeUrl?: string | null;
+  photoAfterUrl?: string | null;
+  sparePartsUsed?: string | null;
+  repairDurationMinutes?: number | null;
+  startQrVerified: boolean;
+  finishQrVerified: boolean;
   resolutionNotes?: string | null;
   resolvedAt?: string | null;
   createdAt: string;

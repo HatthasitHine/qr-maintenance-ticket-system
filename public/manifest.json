@@ -1,0 +1,21 @@
+{
+  "name": "QR Maintenance Ticket System",
+  "short_name": "FixTicket",
+  "description": "ระบบ Scan QR แจ้งซ่อมและรันคิวช่างอัตโนมัติ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/wrench.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/wrench.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

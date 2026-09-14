@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import {
   HardHat,
   Bell,
@@ -16,8 +17,43 @@ import {
   Cpu,
   User,
   ShieldAlert,
+  Camera,
+  Image as ImageIcon,
+  X,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
-import { Ticket, User as UserType } from "@/lib/types";
+import { Ticket, User as UserType, DutyStatus } from "@/lib/types";
+
+// Simple Web Audio API Synthesizer for alerts
+function playChimeSound() {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1); // A5
+
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200]);
+    }
+  } catch (e) {
+    // Ignore audio permission block
+  }
+}
 
 export default function TechnicianPortalPage() {
   const [technicians, setTechnicians] = useState<UserType[]>([]);
@@ -27,25 +63,40 @@ export default function TechnicianPortalPage() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Sound notification flag
+  const prevIncomingCount = useRef<number>(0);
+
+  // Modal State for On-site Start Verification
+  const [startTicket, setStartTicket] = useState<Ticket | null>(null);
+  const [startMachineCode, setStartMachineCode] = useState<string>("");
+
   // Modal State for Closing Job
   const [closingTicket, setClosingTicket] = useState<Ticket | null>(null);
   const [closeResolutionType, setCloseResolutionType] = useState<"RESOLVE" | "REOPEN">("RESOLVE");
   const [closeNotes, setCloseNotes] = useState<string>("");
+  const [spareParts, setSpareParts] = useState<string>("");
+  const [closeMachineCode, setCloseMachineCode] = useState<string>("");
+  const [afterPhotoFile, setAfterPhotoFile] = useState<File | null>(null);
+  const [afterPhotoPreview, setAfterPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
 
   // Load Technicians
-  useEffect(() => {
-    async function loadTechs() {
-      try {
-        const res = await fetch("/api/technicians");
-        const data = await res.json();
-        if (data.success && data.technicians.length > 0) {
-          setTechnicians(data.technicians);
+  async function loadTechs() {
+    try {
+      const res = await fetch("/api/technicians");
+      const data = await res.json();
+      if (data.success && data.technicians.length > 0) {
+        setTechnicians(data.technicians);
+        if (!selectedTechId) {
           setSelectedTechId(data.technicians[0].id);
         }
-      } catch (err) {
-        console.error("Error loading technicians:", err);
       }
+    } catch (err) {
+      console.error("Error loading technicians:", err);
     }
+  }
+
+  useEffect(() => {
     loadTechs();
   }, []);
 
@@ -58,6 +109,12 @@ export default function TechnicianPortalPage() {
       const data = await res.json();
       if (data.success) {
         setTickets(data.tickets);
+
+        const incoming = data.tickets.filter((t: Ticket) => t.status === "CREATED");
+        if (incoming.length > prevIncomingCount.current) {
+          playChimeSound();
+        }
+        prevIncomingCount.current = incoming.length;
       }
     } catch (err) {
       console.error("Error fetching tickets:", err);
@@ -79,6 +136,24 @@ export default function TechnicianPortalPage() {
   }, [selectedTechId]);
 
   const selectedTech = technicians.find((t) => t.id === selectedTechId);
+
+  // Toggle Duty Status
+  async function updateDutyStatus(newStatus: DutyStatus) {
+    if (!selectedTechId) return;
+    try {
+      const res = await fetch(`/api/technicians/${selectedTechId}/duty`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dutyStatus: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadTechs();
+      }
+    } catch (err) {
+      console.error("Error updating duty status:", err);
+    }
+  }
 
   // Categorize tickets
   const incomingTickets = tickets.filter((t) => t.status === "CREATED");
@@ -106,10 +181,12 @@ export default function TechnicianPortalPage() {
       const data = await res.json();
       if (data.success) {
         await loadTechTickets(false);
-        if (action === "RESOLVE" || action === "REOPEN") {
-          setClosingTicket(null);
-          setCloseNotes("");
-        }
+        setStartTicket(null);
+        setClosingTicket(null);
+        setCloseNotes("");
+        setSpareParts("");
+        setAfterPhotoFile(null);
+        setAfterPhotoPreview(null);
       } else {
         alert(data.error || "เกิดข้อผิดพลาด");
       }
@@ -121,59 +198,122 @@ export default function TechnicianPortalPage() {
     }
   }
 
+  // Handle Close Job Submit with photo upload
+  async function submitCloseJob() {
+    if (!closingTicket) return;
+    if (!closeNotes.trim()) {
+      alert("กรุณากรอกบันทึกผลการซ่อม");
+      return;
+    }
+
+    let photoUrl: string | null = null;
+    if (afterPhotoFile) {
+      setUploadingPhoto(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", afterPhotoFile);
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const uploadData = await res.json();
+        if (uploadData.success) {
+          photoUrl = uploadData.url;
+        }
+      } catch (err) {
+        console.warn("Upload failed:", err);
+      } finally {
+        setUploadingPhoto(false);
+      }
+    }
+
+    await handleTicketAction(closingTicket.id, closeResolutionType, {
+      resolutionNotes: closeNotes.trim(),
+      sparePartsUsed: spareParts.trim() || null,
+      machineCode: closeMachineCode.trim() || null,
+      photoAfterUrl: photoUrl,
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header & Tech Selector */}
-      <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-inner">
-            <HardHat className="w-7 h-7" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">
-                {selectedTech?.name || "หน้าจอช่างผู้ปฏิบัติงาน"}
-              </h1>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30">
-                TECHNICIAN
-              </span>
+      <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-lg space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-inner">
+              <HardHat className="w-7 h-7" />
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              โทร: {selectedTech?.phone || "-"} | งานในคิวปัจจุบัน:{" "}
-              <strong className="text-white font-bold">
-                {acceptedTickets.length + inProgressTickets.length} งาน
-              </strong>
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight">
+                  {selectedTech?.name || "หน้าจอช่างผู้ปฏิบัติงาน"}
+                </h1>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30">
+                  TECHNICIAN
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                โทร: {selectedTech?.phone || "-"} | คิวงานในมือ:{" "}
+                <strong className="text-white font-bold">
+                  {acceptedTickets.length + inProgressTickets.length} งาน
+                </strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Switch Account */}
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                สลับบัญชีช่างเพื่อทดสอบ:
+              </label>
+              <select
+                value={selectedTechId}
+                onChange={(e) => setSelectedTechId(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {technicians.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    👤 {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => loadTechTickets(false)}
+              disabled={refreshing}
+              className="mt-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all"
+              title="รีเฟรชข้อมูล"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-400" : ""}`} />
+            </button>
           </div>
         </div>
 
-        {/* Switch Account */}
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-              สลับบัญชีช่างเพื่อทดสอบ:
-            </label>
-            <select
-              value={selectedTechId}
-              onChange={(e) => setSelectedTechId(e.target.value)}
-              className="bg-slate-800 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  👤 {t.name}
-                </option>
-              ))}
-            </select>
+        {/* Duty Status Controller Bar */}
+        <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+            <span>สถานะเวรปฏิบัติการ:</span>
           </div>
 
-          <button
-            onClick={() => loadTechTickets(false)}
-            disabled={refreshing}
-            className="mt-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all"
-            title="รีเฟรชข้อมูล"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-400" : ""}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            {[
+              { id: "ON_DUTY", label: "🟢 เข้าเวร / พร้อมรับงาน", color: "bg-emerald-600 text-white" },
+              { id: "ON_BREAK", label: "🟡 พักเบรก", color: "bg-amber-600 text-white" },
+              { id: "OFF_DUTY", label: "⚪ ออกเวร", color: "bg-slate-700 text-slate-300" },
+            ].map((st) => (
+              <button
+                key={st.id}
+                onClick={() => updateDutyStatus(st.id as DutyStatus)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  selectedTech?.dutyStatus === st.id
+                    ? `${st.color} shadow-sm ring-2 ring-white/30`
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -221,6 +361,17 @@ export default function TechnicianPortalPage() {
                 <div className="text-xs text-slate-700 bg-slate-50 p-2 rounded border border-slate-100">
                   <strong>อาการ:</strong> {t.issueDesc}
                 </div>
+
+                {t.photoBeforeUrl && (
+                  <div className="pt-1">
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">รูปอาการที่แจ้ง:</span>
+                    <img
+                      src={t.photoBeforeUrl}
+                      alt="Before"
+                      className="w-full h-28 object-cover rounded-lg border border-slate-200"
+                    />
+                  </div>
+                )}
 
                 {/* Accept Button & Timeout Simulation */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -286,7 +437,7 @@ export default function TechnicianPortalPage() {
                   <div className="font-bold text-sm text-slate-900">{t.machine.name}</div>
                   <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{t.machine.location}</span>
+                    <span>{t.machine.location} ({t.machine.code})</span>
                   </div>
                 </div>
 
@@ -300,14 +451,18 @@ export default function TechnicianPortalPage() {
                   </div>
                 )}
 
-                {/* Start Button */}
-                <button
-                  onClick={() => handleTicketAction(t.id, "START")}
-                  disabled={actionLoading === t.id}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-                >
-                  <Play className="w-3.5 h-3.5" /> ถึงหน้างาน & เริ่มซ่อม (IN PROGRESS)
-                </button>
+                {/* Start Repair Button with QR Verification */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      setStartTicket(t);
+                      setStartMachineCode("");
+                    }}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Camera className="w-4 h-4" /> สแกน QR ยืนยันถึงหน้างาน & เริ่มซ่อม
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -359,10 +514,14 @@ export default function TechnicianPortalPage() {
                     setClosingTicket(t);
                     setCloseResolutionType("RESOLVE");
                     setCloseNotes("");
+                    setSpareParts("");
+                    setCloseMachineCode("");
+                    setAfterPhotoFile(null);
+                    setAfterPhotoPreview(null);
                   }}
                   className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> ปิดงาน & สรุปผลการซ่อม
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> สแกน QR ปิดงาน & สรุปผล
                 </button>
               </div>
             ))
@@ -393,11 +552,84 @@ export default function TechnicianPortalPage() {
       </div>
 
       {/* ======================================================== */}
-      {/* MODAL: CLOSE TICKET (RESOLVE OR REOPEN) */}
+      {/* MODAL 1: ON-SITE START REPAIR QR VERIFICATION */}
+      {/* ======================================================== */}
+      {startTicket && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <Camera className="w-5 h-5 text-blue-600" /> ยืนยันถึงหน้างานเริ่มซ่อม
+              </h3>
+              <button onClick={() => setStartTicket(null)} className="text-slate-400 font-bold">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 text-xs space-y-1">
+              <div>ใบงาน: <strong>#{startTicket.ticketNo}</strong></div>
+              <div>เครื่องจักร: <strong>{startTicket.machine.name}</strong> ({startTicket.machine.code})</div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                สแกนกล้อง หรือกรอกรหัสเครื่องจักรยืนยัน
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={startMachineCode}
+                  onChange={(e) => setStartMachineCode(e.target.value)}
+                  placeholder={`กรอก ${startTicket.machine.code} หรือสแกน QR`}
+                  className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg"
+                />
+                <Link
+                  href={`/scan?mode=start&ticket_id=${startTicket.id}`}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                >
+                  <Camera className="w-3.5 h-3.5" /> กล้อง
+                </Link>
+              </div>
+
+              {/* Quick test match button */}
+              <button
+                type="button"
+                onClick={() => setStartMachineCode(startTicket.machine.code)}
+                className="text-[11px] text-blue-600 hover:underline font-semibold block text-left pt-1"
+              >
+                ⚡ จำลองสแกนรหัสหน้าเครื่อง ({startTicket.machine.code})
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setStartTicket(null)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() =>
+                  handleTicketAction(startTicket.id, "START", {
+                    machineCode: startMachineCode.trim(),
+                  })
+                }
+                disabled={actionLoading === startTicket.id}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-md"
+              >
+                ยืนยันเริ่มซ่อม (IN_PROGRESS)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 2: CLOSE TICKET (RESOLVE OR REOPEN) */}
       {/* ======================================================== */}
       {closingTicket && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900">
@@ -465,15 +697,73 @@ export default function TechnicianPortalPage() {
               <textarea
                 value={closeNotes}
                 onChange={(e) => setCloseNotes(e.target.value)}
-                rows={3}
+                rows={2}
                 placeholder={
                   closeResolutionType === "RESOLVE"
                     ? "เช่น เปลี่ยนลูกปืนสายพาน, เติมน้ำมันหล่อลื่น, ทดสอบเดินเครื่องปกติ..."
-                    : "เช่น รออะไหล่สั่งจากต่างประเทศ, พบปัญหาลึกกว่าเดิม ต้องนัดตรวจสอบซ้ำ..."
+                    : "เช่น รออะไหล่สั่งจากต่างประเทศ, พบปัญหาลึกกว่าเดิม ต้องนัดตรวจซ้ำ..."
                 }
                 className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
+            </div>
+
+            {/* Spare Parts Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                อะไหล่หรืออุปกรณ์ที่เปลี่ยน (ไม่บังคับ)
+              </label>
+              <input
+                type="text"
+                value={spareParts}
+                onChange={(e) => setSpareParts(e.target.value)}
+                placeholder="เช่น สายพาน V-Belt #B52 (1 เส้น), ซีลยางกันรั่ว (ถ้าไม่มีเว้นว่าง)"
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg"
+              />
+            </div>
+
+            {/* Photo After Repair */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                แนบรูปถ่ายหลังซ่อมเสร็จ (Photo After)
+              </label>
+              {afterPhotoPreview ? (
+                <div className="relative inline-block">
+                  <img
+                    src={afterPhotoPreview}
+                    alt="After preview"
+                    className="w-28 h-28 object-cover rounded-lg border border-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAfterPhotoFile(null);
+                      setAfterPhotoPreview(null);
+                    }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 p-3 border border-dashed border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer text-xs text-slate-600">
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  <span>ถ่ายรูปหลังซ่อม หรือเลือกรูป</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setAfterPhotoFile(f);
+                        setAfterPhotoPreview(URL.createObjectURL(f));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
 
             {/* Modal Actions */}
@@ -488,19 +778,15 @@ export default function TechnicianPortalPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  handleTicketAction(closingTicket.id, closeResolutionType, {
-                    resolutionNotes: closeNotes.trim(),
-                  })
-                }
-                disabled={actionLoading === closingTicket.id || !closeNotes.trim()}
+                onClick={submitCloseJob}
+                disabled={actionLoading === closingTicket.id || uploadingPhoto || !closeNotes.trim()}
                 className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-md transition-all disabled:opacity-50 ${
                   closeResolutionType === "RESOLVE"
                     ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
                     : "bg-red-600 hover:bg-red-700 shadow-red-600/20"
                 }`}
               >
-                ยืนยันบันทึกผลการซ่อม
+                {uploadingPhoto ? "กำลังอัปโหลดรูป..." : "ยืนยันบันทึกผลการซ่อม"}
               </button>
             </div>
           </div>

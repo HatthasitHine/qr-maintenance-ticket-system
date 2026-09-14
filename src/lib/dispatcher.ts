@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { sendLineTicketNotification } from "./line";
 
 // In-memory active timers map: ticketId -> NodeJS.Timeout
 const activeTimers = new Map<string, NodeJS.Timeout>();
@@ -9,12 +10,14 @@ export const DEFAULT_TIMEOUT_SECONDS = parseInt(
 );
 
 /**
- * Finds the technician with the least number of active tickets (ACCEPTED / IN_PROGRESS).
+ * Finds the technician with the least number of active tickets (ACCEPTED / IN_PROGRESS)
+ * who is currently ON_DUTY.
  */
 export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
   const technicians = await prisma.user.findMany({
     where: {
       role: "TECHNICIAN",
+      dutyStatus: "ON_DUTY",
       ...(excludeUserIds.length > 0 ? { id: { notIn: excludeUserIds } } : {}),
     },
     include: {
@@ -28,7 +31,7 @@ export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
   });
 
   if (technicians.length === 0) {
-    // If all were excluded, fallback to any technician
+    // If all on-duty were excluded, fallback to any on-duty technician
     if (excludeUserIds.length > 0) {
       return findLeastBusyTechnician([]);
     }
@@ -48,6 +51,7 @@ export async function findLeastBusyTechnician(excludeUserIds: string[] = []) {
 
 /**
  * Assigns a ticket to a technician and arms a timeout for auto-escalation.
+ * Triggers LINE Flex Message notification.
  */
 export async function assignTicket(
   ticketId: string,
@@ -63,7 +67,10 @@ export async function assignTicket(
   const timeoutDate = new Date(Date.now() + timeoutSeconds * 1000);
 
   const [ticket, tech] = await Promise.all([
-    prisma.ticket.findUnique({ where: { id: ticketId } }),
+    prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { machine: true },
+    }),
     prisma.user.findUnique({ where: { id: technicianId } }),
   ]);
 
@@ -83,10 +90,27 @@ export async function assignTicket(
       ticketId: ticket.id,
       actorName: "ระบบจัดคิวอัตโนมัติ",
       eventType: "ASSIGNED",
-      description: `มอบหมายงานให้ช่าง ${tech.name} (กรุณากดรับงานภายใน ${timeoutSeconds} วินาที)`,
+      description: `มอบหมายงานให้ช่าง ${tech.name} (มีเวลากดรับภายใน ${timeoutSeconds} วินาที)`,
       userId: tech.id,
     },
   });
+
+  // Trigger LINE Bot Flex Message Notification
+  try {
+    await sendLineTicketNotification({
+      lineUserId: tech.lineUserId,
+      ticketNo: ticket.ticketNo,
+      ticketId: ticket.id,
+      machineName: ticket.machine.name,
+      machineCode: ticket.machine.code,
+      location: ticket.machine.location,
+      issueDesc: ticket.issueDesc,
+      urgency: ticket.urgency,
+      timeoutSeconds,
+    });
+  } catch (err) {
+    console.error("Failed to send LINE notification:", err);
+  }
 
   // Arm In-Memory Timeout Timer
   const timer = setTimeout(async () => {
@@ -130,7 +154,7 @@ export async function processTicketTimeout(
           ticketId: ticket.id,
           actorName: "ระบบจัดคิวอัตโนมัติ (Timeout)",
           eventType: "TIMEOUT_ESCALATED",
-          description: `ช่าง ${prevTechName} ไม่ได้กดรับงานภายในเวลาที่กำหนด ➔ ระบบส่งต่องานอัตโนมัติไปยังช่าง ${nextTech.name}`,
+          description: `ช่าง ${prevTechName} ไม่ได้รับงานในเวลาที่กำหนด ➔ ส่งต่องานอัตโนมัติไปยังช่าง ${nextTech.name}`,
         },
       });
 

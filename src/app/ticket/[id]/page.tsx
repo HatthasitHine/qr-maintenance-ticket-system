@@ -16,6 +16,8 @@ import {
   ArrowLeft,
   Activity,
   RotateCcw,
+  Check,
+  Package,
 } from "lucide-react";
 import { Ticket } from "@/lib/types";
 
@@ -103,7 +105,6 @@ export default function TicketTrackingPage({
     }
   };
 
-  // Step Status Calculations
   const isCreated = true;
   const isAccepted = ["ACCEPTED", "IN_PROGRESS", "RESOLVED", "REOPENED"].includes(ticket.status);
   const isInProgress = ["IN_PROGRESS", "RESOLVED"].includes(ticket.status);
@@ -127,7 +128,7 @@ export default function TicketTrackingPage({
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-all"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
-            <span>อัปเดตสถานะ (Auto-polling 3s)</span>
+            <span>อัปเดตสถานะสด (3s)</span>
           </button>
         </div>
       </div>
@@ -222,6 +223,17 @@ export default function TicketTrackingPage({
             <div className="text-xs text-slate-600 pt-1">
               <strong>อาการที่แจ้ง:</strong> {ticket.issueDesc}
             </div>
+
+            {ticket.photoBeforeUrl && (
+              <div className="pt-2">
+                <span className="text-[10px] font-bold text-slate-500 block mb-1">รูปถ่ายอาการเสีย:</span>
+                <img
+                  src={ticket.photoBeforeUrl}
+                  alt="Before"
+                  className="w-full h-36 object-cover rounded-lg border border-slate-200"
+                />
+              </div>
+            )}
           </div>
 
           {/* Assigned Technician Info */}
@@ -238,8 +250,18 @@ export default function TicketTrackingPage({
                     <span>{ticket.technician.phone}</span>
                   </div>
                 )}
-                <div className="text-[11px] text-blue-600 font-medium pt-1">
-                  {ticket.status === "CREATED" ? "⏳ ระบบมอบหมายแล้ว (รอช่างกดรับ)" : "✅ ช่างตอบรับงานแล้ว"}
+
+                <div className="pt-2 space-y-1">
+                  <div className="text-xs flex items-center gap-1">
+                    <span>ยืนยัน QR หน้างานเริ่มซ่อม:</span>
+                    {ticket.startQrVerified ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                        <Check className="w-3 h-3" /> ยืนยันแล้ว
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">รอยืนยัน</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -250,19 +272,39 @@ export default function TicketTrackingPage({
           </div>
         </div>
 
-        {/* Resolution Notes If closed */}
-        {ticket.resolutionNotes && (
+        {/* Resolution Notes & After Photo If closed */}
+        {(ticket.resolutionNotes || ticket.photoAfterUrl || ticket.sparePartsUsed) && (
           <div
-            className={`p-4 rounded-xl border ${
+            className={`p-4 rounded-xl border space-y-3 ${
               ticket.status === "RESOLVED"
                 ? "bg-emerald-50 border-emerald-200 text-emerald-900"
                 : "bg-red-50 border-red-200 text-red-900"
             }`}
           >
-            <div className="font-bold text-xs uppercase mb-1">
-              ผลการดำเนินการ ({ticket.status})
+            <div>
+              <div className="font-bold text-xs uppercase mb-1">
+                ผลการดำเนินงานจริง ({ticket.status})
+              </div>
+              <div className="text-sm">{ticket.resolutionNotes || "-"}</div>
             </div>
-            <div className="text-sm">{ticket.resolutionNotes}</div>
+
+            {ticket.sparePartsUsed && (
+              <div className="text-xs flex items-center gap-1.5 pt-1 border-t border-emerald-200/50">
+                <Package className="w-3.5 h-3.5" />
+                <span><strong>อะไหล่ที่เปลี่ยน:</strong> {ticket.sparePartsUsed}</span>
+              </div>
+            )}
+
+            {ticket.photoAfterUrl && (
+              <div className="pt-1">
+                <span className="text-[10px] font-bold block mb-1">รูปถ่ายหลังซ่อมเสร็จ:</span>
+                <img
+                  src={ticket.photoAfterUrl}
+                  alt="After repair"
+                  className="w-40 h-40 object-cover rounded-lg border border-emerald-300"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -10,47 +10,69 @@ import {
   CheckCircle2,
   Cpu,
   MapPin,
-  Clock,
+  Camera,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { Machine } from "@/lib/types";
 
 function TicketForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialMachineId = searchParams.get("machine_id") || "";
+  const initialMachineIdOrCode = searchParams.get("machine_id") || "";
 
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>(initialMachineId);
+  const [selectedMachineId, setSelectedMachineId] = useState<string>("");
   const [reporterName, setReporterName] = useState<string>("คุณสมศรี ใจดี (Operator)");
   const [reporterPhone, setReporterPhone] = useState<string>("086-666-7788");
   const [issueDesc, setIssueDesc] = useState<string>("");
   const [urgency, setUrgency] = useState<string>("NORMAL");
-  const [loading, setLoading] = useState<boolean>(false);
+
+  // Photo Upload State
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
+
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadMachines() {
-      setLoading(true);
       try {
         const res = await fetch("/api/machines");
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.machines.length > 0) {
           setMachines(data.machines);
-          if (!selectedMachineId && data.machines.length > 0) {
+
+          // Find by id or code
+          const matched = data.machines.find(
+            (m: Machine) =>
+              m.id === initialMachineIdOrCode ||
+              m.code.toUpperCase() === initialMachineIdOrCode.toUpperCase()
+          );
+
+          if (matched) {
+            setSelectedMachineId(matched.id);
+          } else {
             setSelectedMachineId(data.machines[0].id);
           }
         }
       } catch (err) {
         console.error("Error loading machines:", err);
-      } finally {
-        setLoading(false);
       }
     }
     loadMachines();
-  }, []);
+  }, [initialMachineIdOrCode]);
 
   const selectedMachine = machines.find((m) => m.id === selectedMachineId);
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +84,29 @@ function TicketForm() {
     setSubmitting(true);
     setError(null);
 
+    let photoUrl: string | null = null;
+
+    // Upload Photo if selected
+    if (photoFile) {
+      setUploadingPhoto(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", photoFile);
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadData.success) {
+          photoUrl = uploadData.url;
+        }
+      } catch (err) {
+        console.warn("Photo upload failed:", err);
+      } finally {
+        setUploadingPhoto(false);
+      }
+    }
+
     try {
       const res = await fetch("/api/tickets", {
         method: "POST",
@@ -72,6 +117,7 @@ function TicketForm() {
           reporterPhone: reporterPhone.trim() || null,
           issueDesc: issueDesc.trim(),
           urgency,
+          photoBeforeUrl: photoUrl,
         }),
       });
 
@@ -96,7 +142,7 @@ function TicketForm() {
           <QrCode className="w-6 h-6 text-blue-600" />
           แจ้งปัญหา / ส่งใบแจ้งซ่อมบำรุง
         </h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-xs text-slate-500">
           กรอกข้อมูลอาการเสีย ระบบจะทำการ Run Q หาช่างที่คิวน้อยที่สุดและส่งมอบหมายงานทันที
         </p>
       </div>
@@ -145,15 +191,15 @@ function TicketForm() {
           </div>
         </div>
 
-        {/* Urgency */}
+        {/* Urgency Selection */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-slate-700 uppercase">ระดับความเร่งด่วน</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { id: "LOW", label: "ต่ำ (Low)", color: "border-slate-200 text-slate-700" },
-              { id: "NORMAL", label: "ปกติ (Normal)", color: "border-blue-200 text-blue-700 bg-blue-50/50" },
-              { id: "HIGH", label: "ด่วน (High)", color: "border-amber-200 text-amber-700" },
-              { id: "CRITICAL", label: "วิกฤต (Critical)", color: "border-red-200 text-red-700" },
+              { id: "LOW", label: "ต่ำ (Low)" },
+              { id: "NORMAL", label: "ปกติ (Normal)" },
+              { id: "HIGH", label: "ด่วน (High)" },
+              { id: "CRITICAL", label: "วิกฤต (Critical)" },
             ].map((item) => (
               <button
                 type="button"
@@ -184,6 +230,46 @@ function TicketForm() {
             className="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
             required
           />
+        </div>
+
+        {/* Real Photo Capture / Upload */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-700 uppercase flex items-center justify-between">
+            <span>แนบรูปถ่ายอาการเสีย (Photo Capture)</span>
+            <span className="text-slate-400 font-normal">ไม่บังคับ</span>
+          </label>
+
+          {photoPreview ? (
+            <div className="relative inline-block">
+              <img
+                src={photoPreview}
+                alt="Preview"
+                className="w-36 h-36 object-cover rounded-xl border border-slate-200 shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoFile(null);
+                  setPhotoPreview(null);
+                }}
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-xs shadow-md"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-slate-500 space-y-1">
+              <Camera className="w-6 h-6 text-blue-600" />
+              <span className="text-xs font-semibold">เปิดกล้องถ่ายรูป หรือเลือกรูปจากมือถือ</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+            </label>
+          )}
         </div>
 
         {/* Reporter Info */}
@@ -217,13 +303,13 @@ function TicketForm() {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || uploadingPhoto}
           className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
         >
-          {submitting ? (
+          {submitting || uploadingPhoto ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>กำลังสร้าง Ticket & Run Q มอบหมายช่าง...</span>
+              <span>กำลังส่งข้อมูล & รันคิวช่าง...</span>
             </>
           ) : (
             <>
