@@ -1,8 +1,22 @@
 const fetch = globalThis.fetch;
 
-const BASE_URL = "http://localhost:3000";
+let BASE_URL = "http://localhost:3000";
+
+async function getBaseUrl() {
+  try {
+    const r = await fetch("http://localhost:3000/api/technicians");
+    if (r.ok) return "http://localhost:3000";
+  } catch (e) {}
+  try {
+    const r = await fetch("http://localhost:3001/api/technicians");
+    if (r.ok) return "http://localhost:3001";
+  } catch (e) {}
+  return "http://localhost:3000";
+}
 
 async function runE2ETest() {
+  BASE_URL = await getBaseUrl();
+  console.log(`Using server URL: ${BASE_URL}`);
   console.log("==========================================");
   console.log("🚀 STARTING FULL SYSTEM E2E WORKFLOW TEST");
   console.log("==========================================");

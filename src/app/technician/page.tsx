@@ -87,17 +87,28 @@ function TechnicianPortalContent() {
   const [afterPhotoPreview, setAfterPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
 
-  // Check and trigger action from scan redirect
+  // Check and trigger action from scan redirect (Only once)
+  const handledUrlRef = useRef<string>("");
+
   useEffect(() => {
     if (urlAction && urlTicketId && tickets.length > 0) {
+      const urlKey = `${urlAction}-${urlTicketId}-${urlMachineCode || ""}`;
+      if (handledUrlRef.current === urlKey) return;
+
       const target = tickets.find((t) => t.id === urlTicketId || t.ticketNo === urlTicketId);
       if (target) {
+        handledUrlRef.current = urlKey;
         if (urlAction === "start") {
           setStartTicket(target);
           if (urlMachineCode) setStartMachineCode(urlMachineCode);
         } else if (urlAction === "finish") {
           setClosingTicket(target);
           if (urlMachineCode) setCloseMachineCode(urlMachineCode);
+        }
+
+        // Clean URL query params to prevent re-triggering on future renders/polling
+        if (typeof window !== "undefined") {
+          window.history.replaceState({}, document.title, window.location.pathname);
         }
       }
     }
